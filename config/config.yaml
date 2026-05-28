@@ -1,0 +1,68 @@
+# Fraud Detection Pipeline Configuration
+
+data:
+  raw_dir: "data/raw"
+  interim_dir: "data/interim"
+  processed_dir: "data/processed"
+  transaction_file: "train_transaction.csv"
+  identity_file: "train_identity.csv"
+
+split:
+  test_size: 0.2
+  val_size: 0.15
+  random_state: 42
+  # Time-based split using TransactionDT
+  # Top 20% by time → test, next 15% → validation, rest → train
+  use_temporal_split: true
+
+features:
+  # Columns to drop before modelling
+  drop_columns: ["TransactionID", "TransactionDT"]
+  
+  # High cardinality threshold for target encoding
+  cardinality_threshold: 50
+  
+  # Missing value threshold — drop features above this
+  missing_threshold: 0.7
+
+  # Feature groups
+  numeric_features: null  # auto-detected
+  categorical_features: null  # auto-detected
+
+models:
+  isolation_forest:
+    n_estimators: 200
+    contamination: 0.035
+    random_state: 42
+    n_jobs: -1
+
+  lightgbm:
+    objective: "binary"
+    metric: "auc"
+    n_estimators: 1000
+    learning_rate: 0.05
+    max_depth: 7
+    num_leaves: 63
+    min_child_samples: 50
+    subsample: 0.8
+    colsample_bytree: 0.8
+    class_weight: "balanced"
+    random_state: 42
+    early_stopping_rounds: 50
+    n_jobs: -1
+
+  optuna:
+    n_trials: 100
+    timeout: 3600  # 1 hour max
+
+evaluation:
+  # Optimize threshold for this metric
+  threshold_metric: "f1"
+  
+  # False positive rate ceiling for business constraint
+  max_fpr: 0.05
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  model_path: "models/best_model.joblib"
