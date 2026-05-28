@@ -45,6 +45,5 @@ Thumbs.db
 *.log
 logs/
 
-# Reports (keep figures dir structure)
-reports/figures/*
-!reports/figures/.gitkeep
+# Reports
+!reports/figures/
