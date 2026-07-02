@@ -1,23 +1,6 @@
 
-.  *        .        .   *       .        *
-            *       .        .    *                      .        .
-     .           *      .          .        🌞      .        *        .
-        .    .       *        .          .          .        .
-   *            .        .    *            .    .           *
-        .  .        .            *    .        .        .  .
-    .     🪐  *         .   ╔═══════════════════════════════╗     .
-         .        .    *    ║                               ║  *
-   *  .       .             ║      F R A U D  D E T E C T   ║       .
-        .          *   .    ║                               ║    *
-    .        *              ╚═══════════════════════════════╝  .
-         .       .    *          .        .     .          *
-   .  *       .          .   *      .      🌍       .         .
-        .          *              .                    *
-     .        🚀        .    *        .          .        .
-   *            .          .    .         🌙    .         *      .
-     .          .    *         .  *     .        .        .
-        *        .         .           *        .     *    .
-
+ F R A U D  D E T E C T 🌞🪐🌍🚀🌙 *
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Fraud Detection Pipeline
 
 A hybrid ML system that catches fraudulent transactions. Built on 590k real transactions from the IEEE-CIS dataset with Isolation Forest for anomaly detection, LightGBM for classification, SHAP for explainability, all wrapped in a FastAPI backend and a Streamlit dashboard you can actually use.
