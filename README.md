@@ -1,26 +1,52 @@
+
+███████╗██████╗  █████╗ ██╗   ██╗██████╗     ██████╗ ███████╗████████╗███████╗ ██████╗████████╗
+██╔════╝██╔══██╗██╔══██╗██║   ██║██╔══██╗    ██╔══██╗██╔════╝╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝
+█████╗  ██████╔╝███████║██║   ██║██║  ██║    ██║  ██║█████╗     ██║   █████╗  ██║        ██║   
+██╔══╝  ██╔══██╗██╔══██║██║   ██║██║  ██║    ██║  ██║██╔══╝     ██║   ██╔══╝  ██║        ██║   
+██║     ██║  ██║██║  ██║╚██████╔╝██████╔╝    ██████╔╝███████╗   ██║   ███████╗╚██████╗   ██║   
+╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝     ╚═════╝ ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝   ╚═╝
+
 # Fraud Detection Pipeline
 
-A hybrid machine learning system that detects fraudulent financial transactions. Built with the IEEE-CIS Fraud Detection dataset (590k real transactions), this project combines unsupervised anomaly detection, supervised classification, and model explainability into a deployable product with a live dashboard.
-
-This isn't a notebook exercise. It's a full pipeline — from raw data to a working API and interactive frontend where you can punch in a transaction and get a fraud verdict with reasons in real time.
+A hybrid ML system that catches fraudulent transactions. Built on 590k real transactions from the IEEE-CIS dataset with Isolation Forest for anomaly detection, LightGBM for classification, SHAP for explainability, all wrapped in a FastAPI backend and a Streamlit dashboard you can actually use.
 
 
-## How It Works
+## Why I built this
 
-The system runs three layers of detection on every transaction:
+Most fraud detection projects on GitHub are a Jupyter notebook with a confusion matrix screenshot and a "future work" section that never happens. I wanted to go further and build the whole thing end-to-end, from raw data to an API endpoint that takes a transaction and returns a verdict with reasons.
 
-**Layer 1 — Isolation Forest (unsupervised).** Scores how "weird" a transaction looks compared to everything else, without knowing which ones are actually fraud. Catches novel patterns that supervised models miss. On its own it achieves 0.71 AUROC and 7x lift at the top 5% of flagged transactions.
+The harder question was: what does "good" actually mean for a fraud model? Accuracy is meaningless when 96.5% of transactions are legitimate. A model that just says "not fraud" every time gets 96.5% accuracy and catches nothing. So the entire project is built around a more honest question: *if a fraud analyst gets a queue of flagged transactions, how much of that queue is real fraud, and how much is noise?*
 
-**Layer 2 — LightGBM (supervised).** A gradient-boosted classifier trained on labelled fraud/legit examples. Tuned with 50 Optuna trials. Takes all 230 engineered features (including the anomaly score from Layer 1) and outputs a fraud probability. This is the main workhorse — 0.87 AUROC on the held-out test set.
 
-**Layer 3 — SHAP explainability.** Every prediction comes with a breakdown of which features pushed the score up or down. Instead of "the model said fraud," you get "flagged because: address mismatch, first-time card use, unusual transaction amount."
+## How it works
 
-The decision threshold is set at 0.84 — the model only flags a transaction as fraud when it's confident. At this threshold, 56% of flagged transactions are real fraud, and the false alarm rate on legit transactions is just 1.1%.
+Three layers, each doing something different:
+
+**Isolation Forest (unsupervised)** : scores how statistically weird a transaction looks, without ever seeing the fraud labels. This catches patterns the supervised model might miss because it's not constrained to learn from historical fraud. On its own it gets 0.71 AUROC and 7x lift in the top 5% of flagged transactions. Not enough to deploy alone, but useful as a feature.
+
+**LightGBM (supervised)** : the main model. A gradient-boosted classifier trained on 230 engineered features, including the anomaly score from the Isolation Forest. Tuned over 50 Optuna trials. Outputs a fraud probability for every transaction. 0.87 AUROC on the held-out test set.
+
+**SHAP explainability** : every single prediction gets a breakdown of *why*. Not "the model said fraud" but "flagged because: address mismatch, first-time card, unusual amount for this email domain." I didn't add this as a nice-to-have. In financial services, a model that can't explain itself doesn't get deployed the regulators want actual explanations, and analysts needs to know what to investigate.
+
+
+## The threshold decision
+
+This is probably the most important design choice in the project.
+
+The decision threshold is set at 0.84. That means the model only flags a transaction as fraud when it's really confident. At this threshold:
+
+- 56% of flagged transactions are actually fraud (precision)
+- The false alarm rate on legit customers is just 1.1%
+- Only 2.4% of all transactions get sent for review
+
+The trade-off? The model misses about 60% of actual fraud cases (recall of 0.40). That sounds bad until you think about it from the operations side. A fraud analyst's time is expensive. A review queue full of false alarms gets ignored. And every legitimate customer who gets declined might leave. I'd rather have a smaller, trustworthy queue where analysts take every alert seriously than a massive queue they learn to tune out.
+
+If you wanted to catch more fraud, you'd lower the threshold, but that means more false alarms, more blocked customers, more analyst fatigue. There's no free lunch here, only a choice about which cost you'd rather pay. I chose precision.
 
 
 ## Results
 
-Evaluated on a time-based test split (the most recent 20% of transactions by date, simulating how it would perform on future data):
+I evaluated this pipeline on a **time-based test split** the most recent 20% of transactions by date. Not a random split. This simulates what actually happens when you deploy a model: it sees future transactions it wasn't trained on.
 
 | Metric | Score |
 |--------|-------|
@@ -30,39 +56,39 @@ Evaluated on a time-based test split (the most recent 20% of transactions by dat
 | Recall | 0.3957 |
 | F1 | 0.4651 |
 
-Out of 118,108 test transactions, the model flagged 2,851 for review (2.4% of all transactions), caught 1,608 of 4,064 actual fraud cases, and incorrectly flagged 1,243 legit transactions. The trade-off is intentional — high precision means the review queue is mostly real fraud, not noise.
+Out of 118,108 test transactions: 2,851 flagged for review, 1,608 of 4,064 actual fraud caught, 1,243 legit transactions incorrectly flagged.
 
-The val-to-test performance drop (F1 0.56 → 0.47) reflects temporal drift — fraud patterns evolve over time, which is expected and realistic.
-
-
-## What the Model Looks At
-
-The pipeline engineers 230 features from the raw data, grouped by what they reveal about a transaction:
-
-**Identity signals** — does the name match the card? Does the billing address check out? M1 through M9 match flags catch mismatches that fraudsters typically trigger when using stolen card details.
-
-**Transaction behavior** — amount, amount bin, log-transformed amount. The model learned that mid-range amounts are actually more suspicious than extreme ones (very high amounts tend to be legit big purchases).
-
-**History and timing** — how many times this card has been used (C1-C14), days since last transaction (D1-D15), hour of day, day of week, weekend flag. A first-time card used at 3am on a weekend looks different from a regular customer on a Tuesday afternoon.
-
-**Anomaly score** — how statistically unusual this transaction is compared to the rest of the dataset, as scored by the Isolation Forest.
-
-**Email domain risk** — the historical fraud rate of the payer's email domain. Some domains have significantly higher fraud rates than others.
-
-No single feature determines the outcome. LightGBM combines all 230 features across 143 decision trees, each checking different combinations, and the final probability is their collective vote.
+The validation-to-test F1 drop (0.56 → 0.47) is real (Honest). That's temporal drift, fraud patterns evolve over time, and a model trained on January data will be slightly worse at catching March fraud. In production, this means you'd need scheduled retraining. That's not a failure, it's how fraud detection actually works.
 
 
-## Project Structure
+## What the model looks at
+
+230 engineered features, grouped by what they actually tell you about a transaction:
+
+**Identity match signals** : does the name match the card? Does the billing address check out? M1–M9 are match flags that catch the kind of mismatches you get when someone uses stolen card details.
+
+**Transaction behaviour** : amount, log-transformed amount, amount bins. One thing the model learned that I didn't expect: mid-range amounts are more suspicious than very large ones. Turns out big purchases tend to be legitimate, it's the medium-sized transactions that are more likely to be fraud.
+
+**Usage history and timing** : card usage counts (C1–C14), days since last transaction (D1–D15), hour of day, day of week. A first-time card used at 3am on a Saturday looks very different from a regular customer on a Tuesday afternoon.
+
+**Anomaly score** : how unusual this transaction is compared to the full dataset, from the Isolation Forest.
+
+**Email domain risk** : the historical fraud rate of the sender's email domain. Some domains have meaningfully higher fraud rates.
+
+No single feature decides the outcome. LightGBM combines all 230 across 143 trees, each checking different feature combinations. The final probability is their collective vote.
+
+
+## Project structure
 
 ```
 fraud-detection/
 ├── src/fraud_detection/
 │   ├── data/load.py                  # Data loading, merging, validation
-│   ├── features/build_features.py    # Feature engineering pipeline (5 transformers)
-│   ├── models/train.py               # Isolation Forest + LightGBM + Optuna tuning
+│   ├── features/build_features.py    # Feature engineering (5 transformers)
+│   ├── models/train.py               # Isolation Forest + LightGBM + Optuna
 │   ├── evaluation/metrics.py         # Metrics, threshold optimization, SHAP
 │   ├── api/app.py                    # FastAPI inference endpoint
-│   └── dashboard/app.py             # Streamlit interactive dashboard
+│   └── dashboard/app.py              # Streamlit interactive dashboard
 ├── config/config.yaml                # All model params, paths, thresholds
 ├── data/
 │   ├── raw/                          # Original Kaggle CSVs (not committed)
@@ -78,15 +104,13 @@ fraud-detection/
 
 ## Setup
 
-Clone the repo and install dependencies:
-
 ```bash
-git clone https://github.com/wn25351/fraud-detection.git
+git clone https://github.com/vshal999/fraud-detection.git
 cd fraud-detection
 python -m venv venv
 ```
 
-Activate the virtual environment:
+Activate:
 
 ```bash
 # Windows
@@ -96,72 +120,68 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-Install everything:
+Install:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Download the dataset from [Kaggle IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection/data). You only need two files — place them in `data/raw/`:
+For this project I have made use of the dataset from [Kaggle IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection/data). Grab these two files and put them in `data/raw/`:
 
 - `train_transaction.csv`
 - `train_identity.csv`
 
-(The test files from Kaggle don't have labels and aren't used.)
+The Kaggle test files don't have labels and they're not used here.
 
 
-## Running the Pipeline
+## Running the pipeline
 
-Train everything from scratch:
+Want to get raw results on a different dataset? Train everything from scratch:
 
 ```bash
 python scripts/run_pipeline.py
 ```
 
-This runs data loading → feature engineering → Isolation Forest → LightGBM training with Optuna → evaluation → saves all models and plots. Takes roughly 30-45 minutes depending on your machine.
+This basically re-runs: data loading → feature engineering → Isolation Forest → LightGBM with Optuna → evaluation → saves models and plots. Takes 30–45 minutes depending on your machine.
 
-Run the tests to make sure everything is working:
+Run the tests:
 
 ```bash
 pytest tests/ -v
 ```
 
-Should see 112 passed.
+112 should pass.
 
 
-## Using the Dashboard
+## Using the dashboard
 
-The dashboard is the easiest way to interact with the model. You need two terminals running.
+The easiest way to interact with the model. You need two terminals.
 
-**Terminal 1 — start the API backend:**
+**Terminal 1 — API backend:**
 
 ```bash
 uvicorn fraud_detection.api.app:app --reload --port 8000
 ```
 
-Wait until you see `Application startup complete`. The `--reload` flag means it auto-restarts if you edit the code.
+Wait for `Application startup complete`.
 
-**Terminal 2 — start the Streamlit dashboard:**
+**Terminal 2 — Streamlit dashboard:**
 
 ```bash
 streamlit run src/fraud_detection/dashboard/app.py
 ```
 
-It'll open in your browser at `http://localhost:8501`. If it doesn't open automatically, click the URL in the terminal.
+Opens at `http://localhost:8501`. Fill in transaction details (anything blank gets filled with training medians), hit **Analyse Transaction**, and you get:
 
-On the dashboard you'll see input fields for transaction details — amount, card network, card type, email domain, match flags, and more. Fill in the details (anything you leave blank gets filled with training data medians), hit **Analyse Transaction**, and you'll get:
+- Fraud probability (0–1)
+- Verdict — red for fraud (above 0.84), green for legit
+- Top 3 risk factors explaining the decision
+- SHAP waterfall chart showing each feature's contribution
 
-- A fraud probability score (0 to 1)
-- A verdict — red for fraud (above 0.84 threshold), green for legit
-- Top 3 risk factors explaining why
-- A SHAP waterfall chart showing how each feature contributed
-
-To stop everything, press `Ctrl + C` in both terminals.
+`Ctrl + C` in both terminals to stop.
 
 
-## Using the API Directly
-
-If you want to call the API programmatically (from another service, script, or tool):
+## Using the API directly
 
 ```bash
 uvicorn fraud_detection.api.app:app --reload --port 8000
@@ -181,10 +201,10 @@ curl -X POST http://localhost:8000/predict \
   -d '{"TransactionAmt": 150, "card4": "visa", "card6": "credit", "ProductCD": "W", "P_emaildomain": "gmail.com", "M1": "T", "M4": "M0", "C1": 1, "D1": 30, "card1": 10000}'
 ```
 
-You can also open `http://localhost:8000/docs` in your browser for an interactive API explorer where you can test requests without curl.
+Interactive API docs at `http://localhost:8000/docs`.
 
 
-## Tech Stack
+## Tech stack
 
 Python 3.10+, pandas, numpy, scikit-learn, LightGBM, Optuna, SHAP, imbalanced-learn, FastAPI, Streamlit, pytest, ruff
 
